@@ -1,0 +1,103 @@
+---
+title: "Machine Learning project"
+author: "thibault nidelet"
+date: "8 juin 2016"
+output: html_document
+---
+
+
+
+#Background and Objective
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement of a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+##Data
+
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#Data Processing
+
+We first going to download the dataset and look at it. There is a lot of columns that are not informative for us and others with a lot of NA or empty information. So we going to clean the two dataset previously to make any analysis.
+
+```{r, warning=FALSE, message = FALSE}
+library(caret)
+to_train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",header=T,sep=",")
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",header=T,sep=",")
+
+to_train <- to_train[, 6:dim(to_train)[2]]
+testing <- testing[, 6:dim(testing)[2]]
+
+treshold <- dim(to_train)[1]*0.90 
+goodColumns <- !apply(to_train, 2, function(x) sum(is.na(x))>treshold | sum(x=="")>treshold)
+to_train <- to_train[, goodColumns]
+testing <- testing[, goodColumns]
+
+badColumns <- nearZeroVar(to_train, saveMetrics = TRUE)
+to_train <- to_train[, badColumns$nzv==FALSE]
+testing <- testing[, badColumns$nzv==FALSE]
+
+str(to_train)
+table(to_train$classe)
+barplot(table(to_train$classe),ylab="count",xlab="classes",col="blue",main="count by classes")
+```
+
+The data appears to be in a proper form.   
+
+#Create `training` and `validation` sets
+
+With the `caret` package we going to split our `to_train` dataset into two smaller dataset : `training` and `validation`. We will fit the model on the `training` dataset and test it in the `validation` set.   
+
+
+```{r, warning=FALSE, message = FALSE}
+library(caret)
+
+# Create a building data set and validation set
+set.seed(333)
+inBuild <- createDataPartition(y=to_train$classe,p=0.7, list=FALSE)
+validation <- to_train[-inBuild,]
+training <- to_train[inBuild,]
+
+dim(training)
+dim(validation)
+dim(testing)
+```
+
+#Machine learning
+
+We going to test two different machine learning strategy : `random forest` and `boosting`. We will choose the model that best predict the `classe` on the `validation` dataset.
+
+
+```{r, warning=FALSE, message = FALSE}
+mod_rf <- train(classe ~ ., data=training, method="rf")
+mod_gbm <- train(classe ~ ., data=training, method="gbm",verbose=FALSE)
+
+pred_rf <- predict(mod_rf,validation)
+confusionMatrix(pred_rf, validation$classe)
+
+pred_gbm <- predict(mod_gbm,validation)
+confusionMatrix(pred_gbm, validation$classe)
+
+sum(pred_rf==validation$classe)/length(pred_rf)
+sum(pred_gbm==validation$classe)/length(pred_gbm)
+```
+
+The two methods are very effctive and predict the same thing in `r round(sum(pred_gbm ==pred_rf)/length(pred_rf)*100)`% of cases. However the random forest strategy give the best results with `r sum(pred_rf==validation$classe)/length(pred_rf)` accuracy. So we going to used it to predict the classes for the `testing` dataset.  
+
+We also going to look at the 20 most important variables that are used to predict the classe in the random forest. 
+
+```{r, warning=FALSE, message = FALSE}
+plot(varImp(mod_rf), main = "Importance of Top 20 Variables", top = 20)
+```
+
+
+#Predicting the value for the testing set. 
+
+```{r, warning=FALSE, message = FALSE}
+final_pred <- predict(mod_rf, newdata=testing)
+final_pred
+```
+
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
